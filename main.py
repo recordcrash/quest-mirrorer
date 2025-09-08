@@ -426,6 +426,7 @@ def render_page_html(*, story_title: str, page_number: int, total_pages: int, pa
         start_over_href=start_over_href,
         go_back_href=go_back_href,
         og_description=og_description,
+        og_image=og_image,
     )
 
 def clean_page_images(out_dir: Path, page_number: int) -> None:
