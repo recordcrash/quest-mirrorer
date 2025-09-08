@@ -225,7 +225,7 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
 <meta property="og:title" content="{{ doc_title }}">
 <meta property="og:description" content="{{ og_description }}">
 <style>{{ css | safe }}</style>
-<link href="css/index.css" rel="stylesheet">
+<link href="/css/index.css" rel="stylesheet">
 </head>
 <body>
   {{ site_header }}
