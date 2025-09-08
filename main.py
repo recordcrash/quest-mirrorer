@@ -206,7 +206,7 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ doc_title }} - {{site_name}}</title>
-<meta property="og:title" content="{{ doc_title }} - {{ site_name }}">
+<meta property="og:title" content="{{ doc_title }}">
 <meta property="og:description" content="{{ og_description }}">
 <meta property="og:type" content="website">
 {% if og_image %}
