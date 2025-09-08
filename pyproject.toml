@@ -1,0 +1,13 @@
+[project]
+name = "quest-mirrorer"
+version = "0.1.0"
+description = "Mirrors quests from Discord to HTML"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "python-dotenv",
+    "audioop-lts",
+    "discord-py-self>=2.0.1",
+    "jinja2>=3.1.6",
+    "requests>=2.32.5",
+]
