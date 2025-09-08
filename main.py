@@ -163,7 +163,6 @@ CSS_MIN = r"""
     --comic-font:"Courier New", Courier, monospace;
     --text-font:Verdana, Arial, Helvetica, sans-serif;
 }
-*{ image-rendering: pixelated; }
 html,body{ margin:0; }
 body{ background:var(--page-bg); color:var(--page-color); font-family:var(--text-font); font-size:18px; display:flex; flex-direction:column; }
 #page-wrapper{ display:flex; flex-direction:column; margin:0 auto; }
