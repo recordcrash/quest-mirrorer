@@ -35,6 +35,7 @@ except ValueError:
     print("CHANNEL_ID must be an integer")
     sys.exit(1)
 
+
 # prevent any outgoing actions
 def install_safety_guards():
     try:
@@ -44,8 +45,10 @@ def install_safety_guards():
 
     async def _disabled_send(self, *args, **kwargs):
         raise RuntimeError("Sending is disabled in this mirror script.")
+
     async def _disabled_reply(self, *args, **kwargs):
         raise RuntimeError("Reply is disabled in this mirror script.")
+
     async def _disabled_trigger_typing(self, *args, **kwargs):
         return
 
@@ -64,6 +67,7 @@ def install_safety_guards():
             dabc.Messageable.trigger_typing = _disabled_trigger_typing
     except Exception:
         pass
+
 
 install_safety_guards()
 
@@ -152,12 +156,12 @@ CSS_MIN = r"""
 }
 
 :root{
-  --page-bg:#535353;
-  --page-color:#000000;
-  --card-bg:#efefef;
-  --card-bg-dark:#c6c6c6;
-  --comic-font:"Courier New", Courier, monospace;
-  --text-font:Verdana, Arial, Helvetica, sans-serif;
+    --page-bg:#535353;
+    --page-color:#000000;
+    --card-bg:#efefef;
+    --card-bg-dark:#c6c6c6;
+    --comic-font:"Courier New", Courier, monospace;
+    --text-font:Verdana, Arial, Helvetica, sans-serif;
 }
 *{ image-rendering: pixelated; }
 html,body{ margin:0; }
@@ -170,34 +174,72 @@ body{ background:var(--page-bg); color:var(--page-color); font-family:var(--text
 #media img{ display:block; max-width:100%; height:auto; margin:0 auto 20px auto; }
 #content{ width:90%; margin:0 auto; }
 .comic-text{
-  font-family:var(--comic-font);
-  font-weight:700;
-  text-align:center;
-  margin:0;
-  padding-top:calc(12px + .6em);
-  padding-bottom:calc(10px + .6em);
-  overflow:hidden;
-  overflow-wrap:break-word;
-  max-width:100%;
+    font-family:var(--comic-font);
+    font-weight:700;
+    text-align:center;
+    margin:0;
+    padding-top:calc(12px + .6em);
+    padding-bottom:calc(10px + .6em);
+    overflow:hidden;
+    overflow-wrap:break-word;
+    max-width:100%;
 }
 .commands{ padding-bottom:38px; font-size:26px; }
-#page-footer{ padding-bottom:17px; font-size:.75em; font-weight:700; display:flex; flex-direction:row; justify-content:space-between; width:90%; margin:0 auto; }
-#page-footer ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:row; }
-#page-footer li{ display:flex; flex-direction:row; }
-#page-footer li:not(:last-child)::after{ content:"|"; font-weight:400; margin:0 .4em; }
+#page-footer{
+    padding-bottom:17px;
+    font-size:.75em;
+    font-weight:700;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    width:90%;
+    margin:0 auto;
+}
+
+#page-footer-top{
+    display:flex;
+    flex-direction:row;
+    justify-content:space-between;
+    align-items:flex-start;
+}
+
+#page-footer-credits{
+    text-align:left;
+}
+
+#page-footer ul{
+    list-style:none;
+    margin:0;
+    padding:0;
+    display:flex;
+    flex-direction:row;
+    flex-wrap:nowrap;
+}
+
+#page-footer li{
+display:flex;
+flex-direction:row;
+}
+
+#page-footer li:not(:last-child)::after{
+content:"|";
+font-weight:400;
+margin:0 .4em;
+}
+#page-footer-right { font-weight: 50; font-size: 0.6rem; font-family: "Courier New", "Verdana"; justify-content: flex-end;}
+#page-footer-right a { text-decoration: none; filter: grayscale(100%);}
 @media (min-width: 900px){
-  #page-wrapper{ width:950px; }
-  #page{ min-width:650px; max-width:950px; }
-  #title{ max-width:600px; padding:14px 0; margin:0 auto; }
-  #content{ width:600px; }
-  .commands{ font-size:24px; }
+#page-wrapper{ width:950px; }
+#page{ min-width:650px; max-width:950px; }
+#title{ max-width:600px; padding:14px 0; margin:0 auto; }
+#content{ width:600px; }
+.commands{ font-size:24px; }
 }
 """
 
 # Jinja environment with autoescape
 env = Environment(
-    loader=BaseLoader(),
-    autoescape=select_autoescape(enabled_extensions=("html",))
+    loader=BaseLoader(), autoescape=select_autoescape(enabled_extensions=("html",))
 )
 
 PAGE_TMPL_STR = r"""<!DOCTYPE html>
@@ -217,60 +259,61 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
 <link href="/css/index.css" rel="stylesheet">
 </head>
 <body>
-  <div id="page-wrapper">
+<div id="page-wrapper">
     <div id="page-outer">
-      <div id="page">
+    <div id="page">
         {% if visible_title %}
         <h2 id="title">{{ visible_title }}</h2>
         {% endif %}
         <div id="media">
-          {% for u in images %}
-          <img src="{{ u }}" alt="{{ alts[loop.index0] }}">
-          {% endfor %}
+        {% for u in images %}
+        <img src="{{ u }}" alt="{{ alts[loop.index0] }}">
+        {% endfor %}
         </div>
         <div id="content" data-s="jq" data-p="{{ "%06d"|format(page_number) }}">
-          {% for p in paragraphs %}
-          <p class="comic-text">{{ p }}</p>
-          {% endfor %}
-          {% if command_text %}
-          <div class="commands">
+        {% for p in paragraphs %}
+        <p class="comic-text">{{ p }}</p>
+        {% endfor %}
+        {% if command_text %}
+        <div class="commands">
             &gt; <a href="{{ command_href }}">{{ command_text }}</a>
-          </div>
-          {% endif %}
-          <div id="page-footer">
-            <ul id="page-footer-left">
-              <li><a id="start-over" href="{{ start_over_href }}">Start Over</a></li>
-              <li><a id="go-back" href="{{ go_back_href }}">Go Back</a></li>
-            </ul>
-            <ul id="page-footer-right"><li><a href="https://github.com/recordcrash/quest-mirrorer">Fan Mirror by {{site_name}}</a></li></ul>
-          </div>
         </div>
-      </div>
+        {% endif %}
+        <div id="page-footer">
+        <ul id="page-footer-left">
+            <li><a id="start-over" href="{{ start_over_href }}">Start Over</a></li>
+            <li><a id="go-back" href="{{ go_back_href }}">Go Back</a></li>
+        </ul>
+        <ul id="page-footer-right"><li><span>Fan Mirror by {{site_name}} <a href="https://github.com/recordcrash/quest-mirrorer">↗️</a></span></li></ul>
+        </div>
+        </div>
     </div>
-  </div>
+    </div>
+</div>
 
-  <script>
-  (function(){
+<script>
+(function(){
     var page = {{ page_number }};
     var total = {{ total_pages }};
     function go(n){
-      if (n < 1) n = 1;
-      if (n > total) return;
-      var href = (n === 1) ? "1.html" : String(n) + ".html";
-      window.location.href = href;
+    if (n < 1) n = 1;
+    if (n > total) return;
+    var href = (n === 1) ? "1.html" : String(n) + ".html";
+    window.location.href = href;
     }
     document.addEventListener("keydown", function(e){
-      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) return;
-      if (e.key === "ArrowLeft"){ if (page > 1) go(page - 1); }
-      else if (e.key === "ArrowRight"){ if (page < total) go(page + 1); }
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) return;
+    if (e.key === "ArrowLeft"){ if (page > 1) go(page - 1); }
+    else if (e.key === "ArrowRight"){ if (page < total) go(page + 1); }
     });
-  })();
-  </script>
+})();
+</script>
 </body>
 </html>"""
 PAGE_TMPL = env.from_string(PAGE_TMPL_STR)
 
 image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff"}
+
 
 def is_image_attachment(att: discord.Attachment) -> bool:
     ct = (att.content_type or "").lower()
@@ -278,6 +321,7 @@ def is_image_attachment(att: discord.Attachment) -> bool:
         return True
     name = (att.filename or "").lower()
     return any(name.endswith(ext) for ext in image_exts)
+
 
 def guess_ext(url: str, content_type: str | None) -> str:
     path = urlparse(url).path or ""
@@ -289,6 +333,7 @@ def guess_ext(url: str, content_type: str | None) -> str:
         if ext2:
             return ".jpg" if ext2 == ".jpe" else ext2
     return ".bin"
+
 
 def download_image(url: str, dest: Path, max_mb: float) -> bool:
     if urlparse(url).scheme not in {"http", "https"}:
@@ -319,9 +364,11 @@ def download_image(url: str, dest: Path, max_mb: float) -> bool:
         print(f"image download failed: {url} ({e})")
         return False
 
+
 def alt_for(url_or_name: str) -> str:
     name = url_or_name.rsplit("/", 1)[-1]
     return name.split("?", 1)[0] or "image"
+
 
 def normalize_paragraphs(text: str) -> list[str]:
     if not text:
@@ -343,6 +390,7 @@ def normalize_paragraphs(text: str) -> list[str]:
         blocks.append(" ".join(buf).strip())
     return [b for b in blocks if b]
 
+
 def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
     pages: list[dict] = []
     current = {"images": [], "paragraphs": [], "command_text": None}
@@ -355,7 +403,9 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
     for m in messages:
         for att in m.attachments:
             if is_image_attachment(att):
-                if current["command_text"] and (current["images"] or current["paragraphs"]):
+                if current["command_text"] and (
+                    current["images"] or current["paragraphs"]
+                ):
                     start_new()
                 current["images"].append(att.url)
 
@@ -364,7 +414,9 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
             u2 = getattr(getattr(e, "thumbnail", None), "url", None)
             for u in [u1, u2]:
                 if u:
-                    if current["command_text"] and (current["images"] or current["paragraphs"]):
+                    if current["command_text"] and (
+                        current["images"] or current["paragraphs"]
+                    ):
                         start_new()
                     current["images"].append(u)
 
@@ -376,12 +428,16 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
                     continue
                 if s.startswith(">"):
                     cmd = s[1:].strip()
-                    if current["command_text"] and (current["images"] or current["paragraphs"]):
+                    if current["command_text"] and (
+                        current["images"] or current["paragraphs"]
+                    ):
                         start_new()
                     current["command_text"] = cmd
             paras = normalize_paragraphs(text)
             if paras:
-                if current["command_text"] and (current["images"] or current["paragraphs"]):
+                if current["command_text"] and (
+                    current["images"] or current["paragraphs"]
+                ):
                     start_new()
                 current["paragraphs"].extend(paras)
 
@@ -390,18 +446,28 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
 
     return pages
 
+
 def title_for_page(i: int, pages: list[dict]) -> str:
     if i == 1:
         return ""
     prev_cmd = pages[i - 2].get("command_text")
     return prev_cmd or ""
 
+
 def atomic_write(path: Path, data: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(data, encoding="utf-8")
     tmp.replace(path)
 
-def render_page_html(*, story_title: str, page_number: int, total_pages: int, page: dict, pages: list[dict]) -> str:
+
+def render_page_html(
+    *,
+    story_title: str,
+    page_number: int,
+    total_pages: int,
+    page: dict,
+    pages: list[dict],
+) -> str:
     visible_title = title_for_page(page_number, pages)
     images = page["images"]
     paragraphs = page["paragraphs"]
@@ -409,8 +475,16 @@ def render_page_html(*, story_title: str, page_number: int, total_pages: int, pa
     command_href = f"{page_number + 1}.html" if command_text else None
     start_over_href = "1.html"
     go_back_href = f"{page_number - 1}.html" if page_number > 1 else start_over_href
-    doc_title = f"{story_title}: {visible_title}" if visible_title else f"{story_title}: Page {page_number}"
-    og_description = paragraphs[0][:180] + ("…" if paragraphs and len(paragraphs[0]) > 180 else "") if paragraphs else ""
+    doc_title = (
+        f"{story_title}: {visible_title}"
+        if visible_title
+        else f"{story_title}: Page {page_number}"
+    )
+    og_description = (
+        paragraphs[0][:180] + ("…" if paragraphs and len(paragraphs[0]) > 180 else "")
+        if paragraphs
+        else ""
+    )
     og_image = images[-1] if images else None
 
     return PAGE_TMPL.render(
@@ -433,6 +507,7 @@ def render_page_html(*, story_title: str, page_number: int, total_pages: int, pa
         site_name=SITE_NAME,
     )
 
+
 def clean_page_images(out_dir: Path, page_number: int) -> None:
     prefix = f"page{page_number}_"
     for p in out_dir.glob(f"{prefix}*"):
@@ -441,7 +516,10 @@ def clean_page_images(out_dir: Path, page_number: int) -> None:
         except Exception:
             pass
 
-def rewrite_images_to_local(*, out_dir: Path, page_number: int, urls: list[str]) -> list[str]:
+
+def rewrite_images_to_local(
+    *, out_dir: Path, page_number: int, urls: list[str]
+) -> list[str]:
     clean_page_images(out_dir, page_number)
     local_names: list[str] = []
     for idx, url in enumerate(urls, start=1):
@@ -456,7 +534,10 @@ def rewrite_images_to_local(*, out_dir: Path, page_number: int, urls: list[str])
                 local_names.append(saved.name)
     return local_names
 
-async def regenerate_site_from_channel(chan: discord.abc.Messageable, out_dir: Path) -> int:
+
+async def regenerate_site_from_channel(
+    chan: discord.abc.Messageable, out_dir: Path
+) -> int:
     msgs = []
     async for m in chan.history(limit=HISTORY_LIMIT, oldest_first=True):
         msgs.append(m)
@@ -466,7 +547,9 @@ async def regenerate_site_from_channel(chan: discord.abc.Messageable, out_dir: P
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for i, page in enumerate(pages, start=1):
-        local_imgs = rewrite_images_to_local(out_dir=out_dir, page_number=i, urls=page["images"])
+        local_imgs = rewrite_images_to_local(
+            out_dir=out_dir, page_number=i, urls=page["images"]
+        )
         page_for_render = {
             "images": local_imgs,
             "paragraphs": page["paragraphs"],
@@ -477,7 +560,7 @@ async def regenerate_site_from_channel(chan: discord.abc.Messageable, out_dir: P
             page_number=i,
             total_pages=total_pages,
             page=page_for_render,
-            pages=pages
+            pages=pages,
         )
         atomic_write(out_dir / f"{i}.html", html_str)
 
@@ -497,6 +580,7 @@ async def regenerate_site_from_channel(chan: discord.abc.Messageable, out_dir: P
     print(f"Wrote {total_pages} page files to {out_dir}")
     return total_pages
 
+
 class MirrorClient(discord.Client):
     def __init__(self, *, channel_id: int, out_dir: Path):
         super().__init__()
@@ -506,7 +590,9 @@ class MirrorClient(discord.Client):
     async def on_ready(self):
         print(f"Logged in as {self.user} (id {self.user.id})")
         try:
-            await self.change_presence(status=getattr(discord.Status, "invisible", None))
+            await self.change_presence(
+                status=getattr(discord.Status, "invisible", None)
+            )
         except Exception:
             pass
         try:
@@ -532,6 +618,7 @@ class MirrorClient(discord.Client):
             return
         await regenerate_site_from_channel(message.channel, Path(self.out_dir))
 
+
 def main():
     out_dir = Path(OUTPUT_DIR).resolve()
     client = MirrorClient(channel_id=CHANNEL_ID, out_dir=out_dir)
@@ -541,6 +628,7 @@ def main():
         print("Shutting down")
     except Exception as e:
         print(f"Client error: {e}")
+
 
 if __name__ == "__main__":
     main()
