@@ -20,6 +20,8 @@ OUTPUT_DIR = os.getenv("OUTPUT_DIR") or "site"
 HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT") or 500)
 STORY_TITLE = os.getenv("STORY_TITLE") or "Story"
 MAX_IMAGE_MB = float(os.getenv("MAX_IMAGE_MB") or 25.0)
+ABSOLUTE_URL = os.getenv("ABSOLUTE_URL")
+SITE_NAME = os.getenv("SITE_NAME") or "Site"
 
 if not TOKEN:
     print("DISCORD_TOKEN is missing")
@@ -203,14 +205,14 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ doc_title }}</title>
-<meta property="og:title" content="{{ doc_title }}">
+<title>{{ doc_title }} - {{site_name}}</title>
+<meta property="og:title" content="{{ doc_title }} - {{ site_name }}">
 <meta property="og:description" content="{{ og_description }}">
 <meta property="og:type" content="website">
 {% if og_image %}
-    <meta property="og:image" content="{{ og_image }}">
+    <meta property="og:image" content="{{absolute_url}}/{{ og_image }}">
 {% endif %}
-<meta property="og:site_name" content="HOMESTUCK.NET">
+<meta property="og:site_name" content="{{site_name}}">
 <style>{{ css | safe }}</style>
 <link href="/css/index.css" rel="stylesheet">
 </head>
@@ -240,7 +242,7 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
               <li><a id="start-over" href="{{ start_over_href }}">Start Over</a></li>
               <li><a id="go-back" href="{{ go_back_href }}">Go Back</a></li>
             </ul>
-            <ul id="page-footer-right"><li><a href="https://github.com/recordcrash/quest-mirrorer">Unofficial Mirror by homestuck.net</a></li></ul>
+            <ul id="page-footer-right"><li><a href="https://github.com/recordcrash/quest-mirrorer">Fan Mirror by {{site_name}}</a></li></ul>
           </div>
         </div>
       </div>
@@ -409,7 +411,7 @@ def render_page_html(*, story_title: str, page_number: int, total_pages: int, pa
     go_back_href = f"{page_number - 1}.html" if page_number > 1 else start_over_href
     doc_title = f"{story_title}: {visible_title}" if visible_title else f"{story_title}: Page {page_number}"
     og_description = _html.escape(paragraphs[0][:180] + ("…" if paragraphs and len(paragraphs[0]) > 180 else "")) if paragraphs else ""
-    og_image = images[0] if images else None
+    og_image = images[-1] if images else None
 
     return PAGE_TMPL.render(
         css=CSS_MIN,
@@ -427,6 +429,8 @@ def render_page_html(*, story_title: str, page_number: int, total_pages: int, pa
         go_back_href=go_back_href,
         og_description=og_description,
         og_image=og_image,
+        absolute_url=ABSOLUTE_URL,
+        site_name=SITE_NAME,
     )
 
 def clean_page_images(out_dir: Path, page_number: int) -> None:
