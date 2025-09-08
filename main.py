@@ -410,7 +410,7 @@ def render_page_html(*, story_title: str, page_number: int, total_pages: int, pa
     start_over_href = "1.html"
     go_back_href = f"{page_number - 1}.html" if page_number > 1 else start_over_href
     doc_title = f"{story_title}: {visible_title}" if visible_title else f"{story_title}: Page {page_number}"
-    og_description = _html.escape(paragraphs[0][:180] + ("…" if paragraphs and len(paragraphs[0]) > 180 else "")) if paragraphs else ""
+    og_description = paragraphs[0][:180] + ("…" if paragraphs and len(paragraphs[0]) > 180 else "") if paragraphs else ""
     og_image = images[-1] if images else None
 
     return PAGE_TMPL.render(
