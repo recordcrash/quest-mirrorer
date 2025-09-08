@@ -185,6 +185,12 @@ body{ background:var(--page-bg); color:var(--page-color); font-family:var(--text
     max-width:100%;
 }
 .commands{ padding-bottom:38px; font-size:26px; }
+.commands .placeholder{
+  color:#777;
+  opacity:.9;
+  user-select:none;
+  pointer-events:none;
+}
 #page-footer{
     padding-bottom:17px;
     font-size:.75em;
@@ -274,11 +280,13 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
         {% for p in paragraphs %}
         <p class="comic-text">{{ p }}</p>
         {% endfor %}
-        {% if command_text %}
         <div class="commands">
+        {% if command_text %}
             &gt; <a href="{{ command_href }}">{{ command_text }}</a>
-        </div>
+        {% else %}
+            <span class="placeholder" aria-hidden="true">&gt;</span>
         {% endif %}
+        </div>
         <div id="page-footer">
         <ul id="page-footer-left">
             <li><a id="start-over" href="{{ start_over_href }}">Start Over</a></li>
