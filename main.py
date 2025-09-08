@@ -192,24 +192,6 @@ body{ background:var(--page-bg); color:var(--page-color); font-family:var(--text
 }
 """
 
-# static header you provided
-SITE_HEADER_HTML = Markup("""
-<nav class="site-header py-1">
-  <div class="container d-flex flex-column flex-md-row justify-content-between">
-    <a class="navbar-spiro py-2" href="/index.html" aria-label="Homestuck.net">
-      <img class="bd-placeholder-img mr-2 rounded" height="25" xmlns="http://www.w3.org/2000/svg" preserveaspectratio="xMidYMid slice" focusable="false" role="img" src="/img/templogowhite.png">
-    </a>
-    <a class="py-2 d-none d-md-inline-block" href="/games">Games</a>
-    <a class="py-2 d-none d-md-inline-block" href="/music">Music</a>
-    <a class="py-2 d-none d-md-inline-block" href="/resources">Resources</a>
-    <a class="py-2 d-none d-md-inline-block" href="/tools">Tools</a>
-    <a class="py-2 d-none d-md-inline-block" href="/meta">Meta</a>
-    <a class="py-2 d-none d-md-inline-block" href="/fanworks">Fanworks</a>
-    <a class="py-2 d-none d-md-inline-block" href="/official">Official</a>
-  </div>
-</nav>
-""".strip())
-
 # Jinja environment with autoescape
 env = Environment(
     loader=BaseLoader(),
@@ -224,11 +206,15 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
 <title>{{ doc_title }}</title>
 <meta property="og:title" content="{{ doc_title }}">
 <meta property="og:description" content="{{ og_description }}">
+<meta property="og:type" content="website">
+{% if og_image %}
+    <meta property="og:image" content="{{ og_image }}">
+{% endif %}
+<meta property="og:site_name" content="HOMESTUCK.NET">
 <style>{{ css | safe }}</style>
 <link href="/css/index.css" rel="stylesheet">
 </head>
 <body>
-  {{ site_header }}
   <div id="page-wrapper">
     <div id="page-outer">
       <div id="page">
@@ -253,9 +239,8 @@ PAGE_TMPL_STR = r"""<!DOCTYPE html>
             <ul id="page-footer-left">
               <li><a id="start-over" href="{{ start_over_href }}">Start Over</a></li>
               <li><a id="go-back" href="{{ go_back_href }}">Go Back</a></li>
-              <li><a href="https://github.com/recordcrash/quest-mirrorer">Unofficial Mirror by homestuck.net</a></li>
             </ul>
-            <ul id="page-footer-right"></ul>
+            <ul id="page-footer-right"><li><a href="https://github.com/recordcrash/quest-mirrorer">Unofficial Mirror by homestuck.net</a></li></ul>
           </div>
         </div>
       </div>
@@ -424,10 +409,10 @@ def render_page_html(*, story_title: str, page_number: int, total_pages: int, pa
     go_back_href = f"{page_number - 1}.html" if page_number > 1 else start_over_href
     doc_title = f"{story_title}: {visible_title}" if visible_title else f"{story_title}: Page {page_number}"
     og_description = _html.escape(paragraphs[0][:180] + ("…" if paragraphs and len(paragraphs[0]) > 180 else "")) if paragraphs else ""
+    og_image = images[0] if images else None
 
     return PAGE_TMPL.render(
         css=CSS_MIN,
-        site_header=SITE_HEADER_HTML,
         doc_title=doc_title,
         visible_title=visible_title if visible_title else None,
         story_title=story_title,
