@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import timezone
+import time
 import discord
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from zoneinfo import ZoneInfo
@@ -111,24 +112,33 @@ async def regenerate_site_from_channel(
     absolute_url: str | None,
     site_name: str,
 ) -> int:
+    t0 = time.perf_counter()
+
+    print("Fetching history: ", end="", flush=True)
+    t_fetch = time.perf_counter()
     msgs = []
+    count = 0
+    step = 50
     async for m in chan.history(limit=history_limit, oldest_first=True):
         msgs.append(m)
+        count += 1
+        if count % step == 0:
+            print(f"{count}..", end="", flush=True)
+    print(f"{count} messages. ({time.perf_counter() - t_fetch:.2f}s)")
+
+    t_parse = time.perf_counter()
     pages = parse_pages_from_messages(msgs)
     total_pages = len(pages)
+    print(f"Parsed {total_pages} pages. ({time.perf_counter() - t_parse:.2f}s)")
 
-    # build log items
     tmp = []
     for i, p in enumerate(pages, start=1):
         tmp.append((p.get("last_ts"), i, p))
-
     tmp.sort(key=lambda t: (t[0], t[1]), reverse=True)
 
     log_items = []
     for ts, i, p in tmp:
-        title = title_for_page(i, pages)
-        if not title:
-            title = story_title
+        title = title_for_page(i, pages) or story_title
         date_str = format_short_date(ts)
         log_items.append(
             {
@@ -144,6 +154,11 @@ async def regenerate_site_from_channel(
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    t_write = time.perf_counter()
+    total_images = 0
+    if total_pages > 0:
+        print("Writing pages: ", end="", flush=True)
+
     for i, page in enumerate(pages, start=1):
         local_imgs = rewrite_images_to_local(
             out_dir=out_dir,
@@ -151,6 +166,11 @@ async def regenerate_site_from_channel(
             urls=page["images"],
             max_image_mb=max_image_mb,
         )
+        total_images += len(local_imgs)
+        if i > 1:
+            print(" ", end="", flush=True)
+        print(f"{i}*[{len(local_imgs)}i]", end="", flush=True)
+
         page_for_render = {
             "images": local_imgs,
             "paragraphs": page["paragraphs"],
@@ -170,6 +190,9 @@ async def regenerate_site_from_channel(
         )
         atomic_write(out_dir / f"{i}.html", html_str)
 
+    if total_pages > 0:
+        print(f" ({time.perf_counter() - t_write:.2f}s)")
+
     if pages:
         first = (out_dir / "1.html").read_text(encoding="utf-8")
         atomic_write(out_dir / "index.html", first)
@@ -183,5 +206,8 @@ async def regenerate_site_from_channel(
             except Exception:
                 pass
 
-    print(f"Wrote {total_pages} page files to {out_dir}")
+    print(
+        f"Summary: wrote {total_pages} page(s), downloaded {total_images} image(s). "
+        f"Total {time.perf_counter() - t0:.2f}s"
+    )
     return total_pages
