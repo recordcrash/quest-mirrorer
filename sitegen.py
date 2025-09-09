@@ -1,6 +1,8 @@
 from pathlib import Path
 from datetime import timezone
 import time
+import json
+from urllib.parse import urlsplit, urlunsplit
 import discord
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from zoneinfo import ZoneInfo
@@ -49,6 +51,91 @@ def atomic_write(path: Path, data: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(data, encoding="utf-8")
     tmp.replace(path)
+
+
+def write_if_changed(path: Path, data: str) -> bool:
+    try:
+        old = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        atomic_write(path, data)
+        return True
+    if old == data:
+        return False
+    atomic_write(path, data)
+    return True
+
+
+def _cache_dir(out_dir: Path) -> Path:
+    d = out_dir / ".cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _images_cache_path(out_dir: Path) -> Path:
+    return _cache_dir(out_dir) / "images.json"
+
+
+def _load_images_cache(out_dir: Path) -> dict:
+    p = _images_cache_path(out_dir)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_images_cache(out_dir: Path, data: dict) -> None:
+    p = _images_cache_path(out_dir)
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=0), encoding="utf-8")
+
+
+def _canonical_image_key(url: str) -> str:
+    s = urlsplit(url)
+    host = s.netloc.lower()
+    if (
+        host.endswith("discordapp.net")
+        or host.endswith("discordapp.com")
+        or host.endswith("discord.com")
+    ):
+        return urlunsplit((s.scheme, s.netloc, s.path, "", ""))
+    return url
+
+
+def rewrite_images_to_local_cached(
+    *,
+    out_dir: Path,
+    page_number: int,
+    urls: list[str],
+    max_image_mb: float,
+) -> tuple[list[str], int, int]:
+    cache = _load_images_cache(out_dir)
+    result = []
+    to_fetch = []
+    positions = []
+    for u in urls:
+        key = _canonical_image_key(u)
+        cached_rel = cache.get(key)
+        if cached_rel and (out_dir / cached_rel).exists():
+            result.append(cached_rel)
+        else:
+            positions.append(len(result))
+            result.append(None)
+            to_fetch.append(u)
+    if to_fetch:
+        fetched = rewrite_images_to_local(
+            out_dir=out_dir,
+            page_number=page_number,
+            urls=to_fetch,
+            max_image_mb=max_image_mb,
+        )
+        for rel, pos, orig in zip(fetched, positions, to_fetch):
+            result[pos] = rel
+            cache[_canonical_image_key(orig)] = rel
+        _save_images_cache(out_dir, cache)
+    reused = len(urls) - len(to_fetch)
+    downloaded = len(to_fetch)
+    return result, reused, downloaded
 
 
 def _render_page_html(
@@ -155,18 +242,24 @@ async def regenerate_site_from_channel(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     t_write = time.perf_counter()
-    total_images = 0
+    total_images_downloaded = 0
+    total_images_reused = 0
+    pages_written = 0
+    pages_unchanged = 0
+
     if total_pages > 0:
         print("Writing pages: ", end="", flush=True)
 
     for i, page in enumerate(pages, start=1):
-        local_imgs = rewrite_images_to_local(
+        local_imgs, reused, downloaded = rewrite_images_to_local_cached(
             out_dir=out_dir,
             page_number=i,
             urls=page["images"],
             max_image_mb=max_image_mb,
         )
-        total_images += len(local_imgs)
+        total_images_downloaded += downloaded
+        total_images_reused += reused
+
         if i > 1:
             print(" ", end="", flush=True)
         print(f"{i}*[{len(local_imgs)}i]", end="", flush=True)
@@ -188,14 +281,18 @@ async def regenerate_site_from_channel(
             site_name=site_name,
             log_items=log_items,
         )
-        atomic_write(out_dir / f"{i}.html", html_str)
+        wrote = write_if_changed(out_dir / f"{i}.html", html_str)
+        if wrote:
+            pages_written += 1
+        else:
+            pages_unchanged += 1
 
     if total_pages > 0:
         print(f" ({time.perf_counter() - t_write:.2f}s)")
 
     if pages:
         first = (out_dir / "1.html").read_text(encoding="utf-8")
-        atomic_write(out_dir / "index.html", first)
+        write_if_changed(out_dir / "index.html", first)
 
     keep = {f"{i}.html" for i in range(1, total_pages + 1)} | {"index.html"}
     for p in out_dir.glob("*.html"):
@@ -207,7 +304,8 @@ async def regenerate_site_from_channel(
                 pass
 
     print(
-        f"Summary: wrote {total_pages} page(s), downloaded {total_images} image(s). "
+        f"Summary: wrote {pages_written} pages, {pages_unchanged} unchanged, "
+        f"downloaded {total_images_downloaded} images, reused {total_images_reused} images. "
         f"Total {time.perf_counter() - t0:.2f}s"
     )
     return total_pages
