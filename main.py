@@ -595,7 +595,7 @@ class MirrorClient(discord.Client):
         self.out_dir = out_dir
 
     async def on_ready(self):
-        print(f"Logged in as {self.user} (id {self.user.id})")
+        print(f"Logged in...")
         try:
             await self.change_presence(
                 status=getattr(discord.Status, "invisible", None)
@@ -604,11 +604,29 @@ class MirrorClient(discord.Client):
             pass
         try:
             chan = await self.fetch_channel(self.channel_id)
+        except discord.Forbidden:
+            print(
+                f"Channel {self.channel_id} not visible right now; waiting for permission updates…"
+            )
+            return
         except Exception as e:
             print(f"Could not fetch channel {self.channel_id}: {e}")
-            await self.close()
             return
         await regenerate_site_from_channel(chan, Path(self.out_dir))
+
+    async def _try_regen_if_visible(self):
+        try:
+            chan = await self.fetch_channel(self.channel_id)
+        except discord.Forbidden:
+            return
+        except Exception:
+            return
+        await regenerate_site_from_channel(chan, Path(self.out_dir))
+
+    async def on_guild_channel_update(self, before, after):
+        if getattr(after, "id", None) != self.channel_id:
+            return
+        await self._try_regen_if_visible()
 
     async def on_message(self, message: discord.Message):
         if getattr(message.channel, "id", None) != self.channel_id:
