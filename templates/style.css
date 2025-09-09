@@ -1,0 +1,310 @@
+@font-face {
+  font-family: "Arial";
+  font-weight: 700;
+  src: local("Arial Bold"), url("arialbd.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Courier New";
+  font-weight: 700;
+  src: local("Courier New Bold"), url("courbd.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Courier New";
+  font-weight: 700;
+  font-style: italic;
+  src: local("Courier New Bold Italic"), url("courbi.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Verdana";
+  font-weight: 400;
+  src: local("Verdana"), url("verdana.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Verdana";
+  font-weight: 700;
+  src: local("Verdana Bold"), url("verdanab.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Verdana";
+  font-weight: 400;
+  font-style: italic;
+  src: local("Verdana Italic"), url("verdanai.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Verdana";
+  font-weight: 700;
+  font-style: italic;
+  src: local("Verdana Bold Italic"), url("verdanaz.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Comic Sans MS";
+  font-weight: 400;
+  src: local("Comic Sans MS"), url("comic.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Comic Sans MS";
+  font-weight: 700;
+  src: local("Comic Sans MS Bold"), url("comicbd.ttf") format("truetype");
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  font-weight: 400;
+  src: local("OpenDyslexic Regular"),
+    url("OpenDyslexic-Regular.otf") format("opentype");
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  font-weight: 700;
+  src: local("OpenDyslexic Bold"),
+    url("OpenDyslexic-Bold.otf") format("opentype");
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  font-weight: 400;
+  font-style: italic;
+  src: local("OpenDyslexic Italic"),
+    url("OpenDyslexic-Italic.otf") format("opentype");
+}
+@font-face {
+  font-family: "OpenDyslexic";
+  font-weight: 700;
+  font-style: italic;
+  src: local("OpenDyslexic Bold Italic"),
+    url("OpenDyslexic-Bold-Italic.otf") format("opentype");
+}
+
+:root {
+  --page-bg: #535353;
+  --page-color: #000000;
+  --card-bg: #efefef;
+  --card-bg-dark: #c6c6c6;
+  --comic-font: "Courier New", Courier, monospace;
+  --text-font: Verdana, Arial, Helvetica, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+}
+body {
+  background: var(--page-bg);
+  color: var(--page-color);
+  font-family: var(--text-font);
+  font-size: 18px;
+  display: flex;
+  flex-direction: column;
+}
+#page-wrapper {
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+}
+#page-outer {
+  background: var(--card-bg-dark);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: 7px;
+  padding-bottom: 23px;
+}
+#page {
+  background: var(--card-bg);
+  margin: 0 auto;
+  width: auto;
+}
+#title {
+  margin: 0;
+  padding: 20px 0;
+  font-size: 32px;
+  font-family: var(--comic-font);
+  font-weight: 700;
+  text-align: center;
+  margin: 0 5%;
+  overflow: hidden;
+  overflow-wrap: break-word;
+}
+#media {
+  display: flex;
+  flex-direction: column;
+}
+#media img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 20px auto;
+}
+#content {
+  width: 90%;
+  margin: 0 auto;
+}
+
+.comic-text {
+  font-family: var(--comic-font);
+  font-weight: 700;
+  text-align: center;
+  margin: 0;
+  padding-top: calc(12px + 0.6em);
+  padding-bottom: calc(10px + 0.6em);
+  overflow: hidden;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.commands {
+  padding-bottom: 38px;
+  font-size: 26px;
+}
+.commands .placeholder {
+  color: #777;
+  opacity: 0.9;
+  user-select: none;
+  pointer-events: none;
+}
+
+#page-footer {
+  padding-bottom: 17px;
+  font-size: 0.75em;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 90%;
+  margin: 0 auto;
+}
+#page-footer ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+}
+#page-footer li {
+  display: flex;
+  flex-direction: row;
+}
+#page-footer li:not(:last-child)::after {
+  content: "|";
+  font-weight: 400;
+  margin: 0 0.4em;
+}
+
+#page-footer-left {
+  align-items: center;
+}
+#page-footer-right {
+  font-weight: 50;
+  font-size: 0.6rem;
+  font-family: "Courier New", "Verdana";
+  justify-content: flex-end;
+  align-items: center;
+}
+#page-footer-right,
+#page-footer-right li,
+#page-footer-right span,
+#page-footer-right a {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+#page-footer-right a {
+  text-decoration: none;
+  filter: grayscale(100%);
+}
+
+@media (min-width: 900px) {
+  #page-wrapper {
+    width: 950px;
+  }
+  #page {
+    min-width: 650px;
+    max-width: 950px;
+  }
+  #title {
+    max-width: 600px;
+    padding: 14px 0;
+    margin: 0 auto;
+  }
+  #content {
+    width: 600px;
+  }
+  .commands {
+    font-size: 24px;
+  }
+}
+
+#page-footer-left a:link,
+#page-footer-left a:visited,
+#page-footer-left a:hover,
+#page-footer-left a:active {
+  color: blue;
+  text-decoration: underline;
+}
+
+.log-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.log-modal[hidden] {
+  display: none;
+}
+
+.log-card {
+  background: var(--card-bg);
+  border: 1px dashed black;
+  width: min(90vw, 700px);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 20px 5%;
+  box-sizing: border-box;
+  color: var(--page-color);
+  font-family: var(--text-font);
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.log-header button {
+  font-size: 14px;
+  background: var(--card-bg);
+  border: 1px solid black;
+  padding: 2px 6px;
+}
+
+.log-list {
+  font-weight: 700;
+  font-size: 0.85em;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 5.6em auto 1fr;
+  column-gap: 0.4em;
+  align-items: baseline;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.log-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-sep {
+  white-space: nowrap;
+}
+
+.log-link {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
