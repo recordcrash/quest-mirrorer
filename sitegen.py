@@ -74,22 +74,24 @@ def _images_cache_path(out_dir: Path) -> Path:
     return _cache_dir(out_dir) / "images.json"
 
 
-def _load_images_cache(out_dir: Path) -> dict:
-    p = _images_cache_path(out_dir)
-    if not p.exists():
+def _videos_cache_path(out_dir: Path) -> Path:
+    return _cache_dir(out_dir) / "videos.json"
+
+
+def _load_cache(path: Path) -> dict:
+    if not path.exists():
         return {}
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
-def _save_images_cache(out_dir: Path, data: dict) -> None:
-    p = _images_cache_path(out_dir)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=0), encoding="utf-8")
+def _save_cache(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=0), encoding="utf-8")
 
 
-def _canonical_image_key(url: str) -> str:
+def _canonical_media_key(url: str) -> str:
     s = urlsplit(url)
     host = s.netloc.lower()
     if (
@@ -108,14 +110,14 @@ def rewrite_images_to_local_cached(
     urls: list[str],
     max_image_mb: float,
 ) -> tuple[list[str], int, int]:
-    cache = _load_images_cache(out_dir)
+    cache = _load_cache(_images_cache_path(out_dir))
     local_names: list[str] = []
     reused = 0
     downloaded = 0
     seen_rels: set[str] = set()
 
     for idx, url in enumerate(urls, start=1):
-        key = _canonical_image_key(url)
+        key = _canonical_media_key(url)
         rel = cache.get(key)
         expected_base = f"page{page_number}_{idx}"
 
@@ -151,7 +153,61 @@ def rewrite_images_to_local_cached(
                 seen_rels.add(rel)
                 reused += 1
 
-    _save_images_cache(out_dir, cache)
+    _save_cache(_images_cache_path(out_dir), cache)
+    return local_names, reused, downloaded
+
+
+def rewrite_videos_to_local_cached(
+    *,
+    out_dir: Path,
+    page_number: int,
+    urls: list[str],
+    max_image_mb: float,  # reuse same size limit for simplicity
+) -> tuple[list[str], int, int]:
+    cache = _load_cache(_videos_cache_path(out_dir))
+    local_names: list[str] = []
+    reused = 0
+    downloaded = 0
+    seen_rels: set[str] = set()
+
+    for idx, url in enumerate(urls, start=1):
+        key = _canonical_media_key(url)
+        rel = cache.get(key)
+        expected_base = f"page{page_number}_v{idx}"
+
+        can_reuse = False
+        if rel:
+            p = out_dir / rel
+            if p.exists() and rel not in seen_rels:
+                can_reuse = True
+
+        if can_reuse:
+            local_names.append(rel)
+            seen_rels.add(rel)
+            reused += 1
+            continue
+
+        dest = out_dir / expected_base
+        ok = download_image(url, dest, max_image_mb)
+        if ok:
+            saved = next(out_dir.glob(expected_base + ".*"), None)
+            if saved:
+                cache[key] = saved.name
+                local_names.append(saved.name)
+                seen_rels.add(saved.name)
+                downloaded += 1
+            else:
+                if rel and (out_dir / rel).exists() and rel not in seen_rels:
+                    local_names.append(rel)
+                    seen_rels.add(rel)
+                    reused += 1
+        else:
+            if rel and (out_dir / rel).exists() and rel not in seen_rels:
+                local_names.append(rel)
+                seen_rels.add(rel)
+                reused += 1
+
+    _save_cache(_videos_cache_path(out_dir), cache)
     return local_names, reused, downloaded
 
 
@@ -170,6 +226,7 @@ def _render_page_html(
 ) -> str:
     visible_title = title_for_page(page_number, pages)
     images = page["images"]
+    videos = page.get("videos") or []
     paragraphs = page["paragraphs"]
     command_text = page["command_text"]
     command_href = f"{page_number + 1}.html" if command_text else None
@@ -192,6 +249,7 @@ def _render_page_html(
         page_number=page_number,
         total_pages=total_pages,
         images=images,
+        videos=videos,
         alts=[alt_for(u) for u in images],
         paragraphs=paragraphs,
         command_text=command_text if command_text else None,
@@ -262,6 +320,8 @@ async def regenerate_site_from_channel(
     t_write = time.perf_counter()
     total_images_downloaded = 0
     total_images_reused = 0
+    total_videos_downloaded = 0
+    total_videos_reused = 0
     pages_written = 0
     pages_unchanged = 0
 
@@ -271,21 +331,30 @@ async def regenerate_site_from_channel(
     processed_pages: dict[int, dict] = {}
 
     for i, page in enumerate(pages, start=1):
-        local_imgs, reused, downloaded = rewrite_images_to_local_cached(
+        local_imgs, img_reused, img_downloaded = rewrite_images_to_local_cached(
             out_dir=out_dir,
             page_number=i,
             urls=page["images"],
             max_image_mb=max_image_mb,
         )
-        total_images_downloaded += downloaded
-        total_images_reused += reused
+        local_vids, vid_reused, vid_downloaded = rewrite_videos_to_local_cached(
+            out_dir=out_dir,
+            page_number=i,
+            urls=page.get("videos") or [],
+            max_image_mb=max_image_mb,
+        )
+        total_images_downloaded += img_downloaded
+        total_images_reused += img_reused
+        total_videos_downloaded += vid_downloaded
+        total_videos_reused += vid_reused
 
         if i > 1:
             print(" ", end="", flush=True)
-        print(f"{i}*[{len(local_imgs)}i]", end="", flush=True)
+        print(f"{i}*[{len(local_imgs)}i,{len(local_vids)}v]", end="", flush=True)
 
         page_for_render = {
             "images": local_imgs,
+            "videos": local_vids,
             "paragraphs": page["paragraphs"],
             "command_text": page["command_text"],
         }
@@ -323,7 +392,13 @@ async def regenerate_site_from_channel(
                 ts,
                 i,
                 processed_pages.get(
-                    i, {"images": [], "paragraphs": [], "command_text": None}
+                    i,
+                    {
+                        "images": [],
+                        "videos": [],
+                        "paragraphs": [],
+                        "command_text": None,
+                    },
                 ),
             )
         )
@@ -352,7 +427,8 @@ async def regenerate_site_from_channel(
 
     print(
         f"Summary: wrote {pages_written} page(s), {pages_unchanged} unchanged, "
-        f"downloaded {total_images_downloaded} image(s), reused {total_images_reused} image(s). "
+        f"downloaded {total_images_downloaded} image(s), reused {total_images_reused} image(s), "
+        f"downloaded {total_videos_downloaded} video(s), reused {total_videos_reused} video(s). "
         f"Total {time.perf_counter() - t0:.2f}s"
     )
     return total_pages

@@ -7,6 +7,7 @@ import requests
 import discord
 
 image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff"}
+video_exts = {".mp4", ".webm", ".mov", ".m4v", ".ogv", ".ogg", ".avi", ".mkv"}
 
 
 def _load_shill_words() -> list[str]:
@@ -42,10 +43,18 @@ def is_image_attachment(att: discord.Attachment) -> bool:
     return any(name.endswith(ext) for ext in image_exts)
 
 
+def is_video_attachment(att: discord.Attachment) -> bool:
+    ct = (att.content_type or "").lower()
+    if ct.startswith("video/"):
+        return True
+    name = (att.filename or "").lower()
+    return any(name.endswith(ext) for ext in video_exts)
+
+
 def guess_ext(url: str, content_type: str | None) -> str:
     path = urlparse(url).path or ""
     ext = Path(path).suffix.lower()
-    if ext in image_exts:
+    if ext in image_exts or ext in video_exts:
         return ext
     if content_type:
         ext2 = mimetypes.guess_extension(content_type.split(";")[0].strip())
@@ -134,13 +143,20 @@ def normalize_paragraphs(text: str) -> list[str]:
 
 def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
     pages: list[dict] = []
-    current = {"images": [], "paragraphs": [], "command_text": None, "last_ts": None}
+    current = {
+        "images": [],
+        "videos": [],
+        "paragraphs": [],
+        "command_text": None,
+        "last_ts": None,
+    }
 
     def start_new():
         nonlocal current
         pages.append(current)
         current = {
             "images": [],
+            "videos": [],
             "paragraphs": [],
             "command_text": None,
             "last_ts": None,
@@ -151,24 +167,41 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
             for att in m.attachments:
                 if is_image_attachment(att):
                     if current["command_text"] and (
-                        current["images"] or current["paragraphs"]
+                        current["images"] or current["videos"] or current["paragraphs"]
                     ):
                         start_new()
                     current["images"].append(att.url)
                     current["last_ts"] = m.created_at
+                elif is_video_attachment(att):
+                    if current["command_text"] and (
+                        current["images"] or current["videos"] or current["paragraphs"]
+                    ):
+                        start_new()
+                    current["videos"].append(att.url)
+                    current["last_ts"] = m.created_at
 
         if m.embeds:
             for e in m.embeds:
-                u1 = getattr(getattr(e, "image", None), "url", None)
-                u2 = getattr(getattr(e, "thumbnail", None), "url", None)
-                for u in (u1, u2):
+                u_img = getattr(getattr(e, "image", None), "url", None)
+                u_th = getattr(getattr(e, "thumbnail", None), "url", None)
+                u_vid = getattr(getattr(e, "video", None), "url", None)
+                for u in (u_img, u_th):
                     if u:
                         if current["command_text"] and (
-                            current["images"] or current["paragraphs"]
+                            current["images"]
+                            or current["videos"]
+                            or current["paragraphs"]
                         ):
                             start_new()
                         current["images"].append(u)
                         current["last_ts"] = m.created_at
+                if u_vid:
+                    if current["command_text"] and (
+                        current["images"] or current["videos"] or current["paragraphs"]
+                    ):
+                        start_new()
+                    current["videos"].append(u_vid)
+                    current["last_ts"] = m.created_at
 
         raw_text = m.content or ""
         if raw_text:
@@ -181,7 +214,7 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
                     cmd = s[1:].strip()
             if cmd is not None:
                 if current["command_text"] and (
-                    current["images"] or current["paragraphs"]
+                    current["images"] or current["videos"] or current["paragraphs"]
                 ):
                     start_new()
                 current["command_text"] = cmd
@@ -189,13 +222,18 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
             paras = normalize_paragraphs(t)
             if paras:
                 if current["command_text"] and (
-                    current["images"] or current["paragraphs"]
+                    current["images"] or current["videos"] or current["paragraphs"]
                 ):
                     start_new()
                 current["paragraphs"].extend(paras)
                 current["last_ts"] = m.created_at
 
-    if current["images"] or current["paragraphs"] or current["command_text"]:
+    if (
+        current["images"]
+        or current["videos"]
+        or current["paragraphs"]
+        or current["command_text"]
+    ):
         pages.append(current)
 
     return pages
