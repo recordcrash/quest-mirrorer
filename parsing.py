@@ -1,10 +1,39 @@
 from pathlib import Path
 from urllib.parse import urlparse
 import mimetypes
+import os
+import re
 import requests
 import discord
 
 image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff"}
+
+
+def _load_shill_words() -> list[str]:
+    raw = os.getenv("SHILLWORDS", "")
+    if not raw:
+        return []
+    return [w.strip() for w in raw.split(",") if w.strip()]
+
+
+_SHILL_WORDS = _load_shill_words()
+
+
+def _filter_shill_words(text: str) -> str:
+    if not text or not _SHILL_WORDS:
+        return text
+    t = text
+    for w in _SHILL_WORDS:
+        t = re.sub(re.escape(w), "", t, flags=re.IGNORECASE)
+    return t
+
+
+# Matches an entire paragraph like [END 9/9/25 UPDATES]
+# Requires both END and UPDATE(S) somewhere inside the brackets
+_END_UPDATE_BRACKET_RE = re.compile(
+    r"^\[\s*(?=[^\]]*\bend\b)(?=[^\]]*\bupdate(?:s)?\b)[^\]]*\]\s*$",
+    re.IGNORECASE,
+)
 
 
 def is_image_attachment(att: discord.Attachment) -> bool:
@@ -102,7 +131,8 @@ def normalize_paragraphs(text: str) -> list[str]:
             buf.append(s)
     if buf:
         blocks.append(" ".join(buf).strip())
-    return [b for b in blocks if b]
+    # Drop paragraphs like [END ... UPDATE(S) ...]
+    return [b for b in blocks if b and not _END_UPDATE_BRACKET_RE.match(b)]
 
 
 def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
@@ -143,10 +173,12 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
                         current["images"].append(u)
                         current["last_ts"] = m.created_at
 
-        text = (m.content or "").strip()
-        if text:
+        raw_text = m.content or ""
+        if raw_text:
+            t = _filter_shill_words(raw_text).strip()
+
             cmd = None
-            for raw_line in text.replace("\r\n", "\n").split("\n"):
+            for raw_line in t.replace("\r\n", "\n").split("\n"):
                 s = raw_line.strip()
                 if s.startswith(">") and len(s) > 1:
                     cmd = s[1:].strip()
@@ -157,7 +189,7 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
                     start_new()
                 current["command_text"] = cmd
 
-            paras = normalize_paragraphs(text)
+            paras = normalize_paragraphs(t)
             if paras:
                 if current["command_text"] and (
                     current["images"] or current["paragraphs"]
