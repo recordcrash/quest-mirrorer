@@ -15,6 +15,18 @@
   {% endif %}
 {% endif %}
 <meta property="og:site_name" content="{{site_name}}">
+
+{# Advertise Atom feed #}
+{% if absolute_url %}
+  <link rel="alternate" type="application/atom+xml"
+        title="{{ story_title }} — Adventure Log (Atom)"
+        href="{{ absolute_url }}/{{ atom_href }}">
+{% else %}
+  <link rel="alternate" type="application/atom+xml"
+        title="{{ story_title }} — Adventure Log (Atom)"
+        href="{{ atom_href }}">
+{% endif %}
+
 <style>{{ css | safe }}</style>
 <link href="/css/index.css" rel="stylesheet">
 </head>
@@ -64,6 +76,13 @@
   <div class="log-card" role="dialog" aria-modal="true" aria-labelledby="log-title">
     <div class="log-header">
       <strong id="log-title">Adventure Log</strong>
+      {# Atom feed link next to the log title #}
+      <a class="feed-link"
+         href="{{ absolute_url ~ '/' ~ atom_href if absolute_url else atom_href }}"
+         rel="alternate"
+         type="application/atom+xml"
+         title="Subscribe to the Atom feed"
+         aria-label="Subscribe to the Atom feed">{{ feed_icon }}</a>
       <button id="log-close" aria-label="Close">Close</button>
     </div>
     <div class="log-list">

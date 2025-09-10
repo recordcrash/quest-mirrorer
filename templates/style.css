@@ -212,6 +212,11 @@ body {
   filter: grayscale(100%);
 }
 
+.feed-link {
+  text-decoration: none;
+  filter: grayscale(100%);
+}
+
 @media (min-width: 900px) {
   #page-wrapper {
     width: 950px;

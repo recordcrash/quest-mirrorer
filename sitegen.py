@@ -1,5 +1,4 @@
 from pathlib import Path
-from datetime import timezone
 import time
 import json
 from urllib.parse import urlsplit, urlunsplit
@@ -7,13 +6,13 @@ import discord
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from zoneinfo import ZoneInfo
 
-BOSTON_TZ = ZoneInfo("America/New_York")
-
-
 from parsing import (
     parse_pages_from_messages,
-    rewrite_images_to_local,
+    download_image,
 )
+from feeds import render_atom
+
+BOSTON_TZ = ZoneInfo("America/New_York")
 
 
 def _tpl_env():
@@ -110,32 +109,50 @@ def rewrite_images_to_local_cached(
     max_image_mb: float,
 ) -> tuple[list[str], int, int]:
     cache = _load_images_cache(out_dir)
-    result = []
-    to_fetch = []
-    positions = []
-    for u in urls:
-        key = _canonical_image_key(u)
-        cached_rel = cache.get(key)
-        if cached_rel and (out_dir / cached_rel).exists():
-            result.append(cached_rel)
+    local_names: list[str] = []
+    reused = 0
+    downloaded = 0
+    seen_rels: set[str] = set()
+
+    for idx, url in enumerate(urls, start=1):
+        key = _canonical_image_key(url)
+        rel = cache.get(key)
+        expected_base = f"page{page_number}_{idx}"
+
+        can_reuse = False
+        if rel:
+            p = out_dir / rel
+            if p.exists() and rel not in seen_rels:
+                can_reuse = True
+
+        if can_reuse:
+            local_names.append(rel)
+            seen_rels.add(rel)
+            reused += 1
+            continue
+
+        dest = out_dir / expected_base
+        ok = download_image(url, dest, max_image_mb)
+        if ok:
+            saved = next(out_dir.glob(expected_base + ".*"), None)
+            if saved:
+                cache[key] = saved.name
+                local_names.append(saved.name)
+                seen_rels.add(saved.name)
+                downloaded += 1
+            else:
+                if rel and (out_dir / rel).exists() and rel not in seen_rels:
+                    local_names.append(rel)
+                    seen_rels.add(rel)
+                    reused += 1
         else:
-            positions.append(len(result))
-            result.append(None)
-            to_fetch.append(u)
-    if to_fetch:
-        fetched = rewrite_images_to_local(
-            out_dir=out_dir,
-            page_number=page_number,
-            urls=to_fetch,
-            max_image_mb=max_image_mb,
-        )
-        for rel, pos, orig in zip(fetched, positions, to_fetch):
-            result[pos] = rel
-            cache[_canonical_image_key(orig)] = rel
-        _save_images_cache(out_dir, cache)
-    reused = len(urls) - len(to_fetch)
-    downloaded = len(to_fetch)
-    return result, reused, downloaded
+            if rel and (out_dir / rel).exists() and rel not in seen_rels:
+                local_names.append(rel)
+                seen_rels.add(rel)
+                reused += 1
+
+    _save_images_cache(out_dir, cache)
+    return local_names, reused, downloaded
 
 
 def _render_page_html(
@@ -186,6 +203,8 @@ def _render_page_html(
         absolute_url=absolute_url,
         site_name=site_name,
         log_items=log_items,
+        atom_href="atom.xml",
+        feed_icon="📡",
     )
 
 
@@ -200,7 +219,6 @@ async def regenerate_site_from_channel(
     site_name: str,
 ) -> int:
     t0 = time.perf_counter()
-
     print("Fetching history: ", end="", flush=True)
     t_fetch = time.perf_counter()
     msgs = []
@@ -250,6 +268,8 @@ async def regenerate_site_from_channel(
     if total_pages > 0:
         print("Writing pages: ", end="", flush=True)
 
+    processed_pages: dict[int, dict] = {}
+
     for i, page in enumerate(pages, start=1):
         local_imgs, reused, downloaded = rewrite_images_to_local_cached(
             out_dir=out_dir,
@@ -269,6 +289,8 @@ async def regenerate_site_from_channel(
             "paragraphs": page["paragraphs"],
             "command_text": page["command_text"],
         }
+        processed_pages[i] = page_for_render
+
         html_str = _render_page_html(
             env=env,
             css=css,
@@ -294,7 +316,32 @@ async def regenerate_site_from_channel(
         first = (out_dir / "1.html").read_text(encoding="utf-8")
         write_if_changed(out_dir / "index.html", first)
 
-    keep = {f"{i}.html" for i in range(1, total_pages + 1)} | {"index.html"}
+    feed_items = []
+    for ts, i, _orig in tmp:
+        feed_items.append(
+            (
+                ts,
+                i,
+                processed_pages.get(
+                    i, {"images": [], "paragraphs": [], "command_text": None}
+                ),
+            )
+        )
+
+    atom_xml = render_atom(
+        story_title=story_title,
+        site_name=site_name,
+        absolute_url=absolute_url,
+        sorted_items=feed_items,
+        pages=pages,
+        limit=None,
+    )
+    write_if_changed(out_dir / "atom.xml", atom_xml)
+
+    keep = {f"{i}.html" for i in range(1, total_pages + 1)} | {
+        "index.html",
+        "atom.xml",
+    }
     for p in out_dir.glob("*.html"):
         name = p.name
         if name not in keep and name[:-5].isdigit():
@@ -304,8 +351,8 @@ async def regenerate_site_from_channel(
                 pass
 
     print(
-        f"Summary: wrote {pages_written} pages, {pages_unchanged} unchanged, "
-        f"downloaded {total_images_downloaded} images, reused {total_images_reused} images. "
+        f"Summary: wrote {pages_written} page(s), {pages_unchanged} unchanged, "
+        f"downloaded {total_images_downloaded} image(s), reused {total_images_reused} image(s). "
         f"Total {time.perf_counter() - t0:.2f}s"
     )
     return total_pages

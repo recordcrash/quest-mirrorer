@@ -28,8 +28,6 @@ def _filter_shill_words(text: str) -> str:
     return t
 
 
-# Matches an entire paragraph like [END 9/9/25 UPDATES]
-# Requires both END and UPDATE(S) somewhere inside the brackets
 _END_UPDATE_BRACKET_RE = re.compile(
     r"^\[\s*(?=[^\]]*\bend\b)(?=[^\]]*\bupdate(?:s)?\b)[^\]]*\]\s*$",
     re.IGNORECASE,
@@ -131,7 +129,6 @@ def normalize_paragraphs(text: str) -> list[str]:
             buf.append(s)
     if buf:
         blocks.append(" ".join(buf).strip())
-    # Drop paragraphs like [END ... UPDATE(S) ...]
     return [b for b in blocks if b and not _END_UPDATE_BRACKET_RE.match(b)]
 
 
