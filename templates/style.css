@@ -133,6 +133,12 @@ body {
   height: auto;
   margin: 0 auto 20px auto;
 }
+#media video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 20px auto;
+}
 #content {
   width: 90%;
   margin: 0 auto;

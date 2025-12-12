@@ -11,10 +11,11 @@ def _rfc3339_utc(dt: datetime | None) -> str:
     return d.isoformat().replace("+00:00", "Z")
 
 
-def _title_for_page(i: int, pages: list[dict]) -> str:
-    if i == 1:
+def _title_for_page(i: int, pages: list[dict], page_offset: int) -> str:
+    rel_idx = i - page_offset
+    if rel_idx <= 1 or rel_idx > len(pages):
         return ""
-    prev_cmd = pages[i - 2].get("command_text")
+    prev_cmd = pages[rel_idx - 2].get("command_text")
     return prev_cmd or ""
 
 
@@ -85,8 +86,11 @@ def render_atom(
     story_title: str,
     site_name: str | None,
     absolute_url: str | None,
-    sorted_items: list[tuple],  # (timestamp, page_num, page_dict) newest first
+    sorted_items: list[tuple],  # (timestamp, page_num, page_dict, title) newest first
     pages: list[dict],
+    page_offset: int = 0,
+    existing_entries: list[str] | None = None,
+    existing_updated: datetime | None = None,
     limit: int | None = 50,
 ) -> str:
     """
@@ -104,11 +108,12 @@ def render_atom(
     feed_id = absolute_url or f"urn:quest-mirror:{_slug(story_title)}"
 
     items = sorted_items if limit is None else sorted_items[:limit]
+    existing_entries = existing_entries or []
 
-    last_updated: datetime | None = None
+    last_updated: datetime | None = existing_updated
     entries_xml: list[str] = []
 
-    for ts, idx, page in items:
+    for ts, idx, page, precomputed_title in items:
         when = ts or datetime.now(tz=timezone.utc)
         if last_updated is None or when > last_updated:
             last_updated = when
@@ -117,7 +122,7 @@ def render_atom(
         link = _page_link(base, idx)
         entry_id = link  # stable perma URL is fine for atom:id
 
-        title = _title_for_page(idx, pages) or story_title
+        title = precomputed_title or _title_for_page(idx, pages, page_offset) or story_title
         summary = _summary_from_paragraphs(page.get("paragraphs") or [])
 
         entry_content = _entry_xhtml(
@@ -141,8 +146,11 @@ def render_atom(
             )
         )
 
+    # preserve any existing entries (older pages) after the newly generated ones
+    entries_xml.extend(existing_entries)
+
     if last_updated is None:
-        last_updated = datetime.now(tz=timezone.utc)
+        last_updated = existing_updated or datetime.now(tz=timezone.utc)
 
     xml: list[str] = []
     xml.append('<?xml version="1.0" encoding="utf-8"?>\n')

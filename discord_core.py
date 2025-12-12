@@ -35,20 +35,30 @@ def install_safety_guards():
 
 
 class MirrorClient(discord.Client):
-    def __init__(self, *, channel_id: int, out_dir: Path, regen_callable):
+    def __init__(self, *, channel_ids: list[int], out_dir: Path, regen_callable):
         super().__init__()
-        self.channel_id = channel_id
+        self.channel_ids = set(channel_ids)
         self.out_dir = out_dir
         self._regen = regen_callable
 
+    async def _fetch_visible_channels(self) -> list:
+        chans = []
+        for cid in self.channel_ids:
+            try:
+                c = await self.fetch_channel(cid)
+            except discord.Forbidden:
+                continue
+            except Exception:
+                continue
+            else:
+                chans.append(c)
+        return chans
+
     async def _try_regen_if_visible(self):
-        try:
-            chan = await self.fetch_channel(self.channel_id)
-        except discord.Forbidden:
+        chans = await self._fetch_visible_channels()
+        if not chans:
             return
-        except Exception:
-            return
-        await self._regen(chan, self.out_dir)
+        await self._regen(chans, self.out_dir)
 
     async def on_ready(self):
         print(f"Logged in as {self.user} (id {self.user.id})")
@@ -58,18 +68,14 @@ class MirrorClient(discord.Client):
             )
         except Exception:
             pass
-        try:
-            chan = await self.fetch_channel(self.channel_id)
-        except discord.Forbidden:
-            print(f"Channel {self.channel_id} not visible right now")
+        chans = await self._fetch_visible_channels()
+        if not chans:
+            print(f"Channels {sorted(self.channel_ids)} not visible right now")
             return
-        except Exception as e:
-            print(f"Could not fetch channel {self.channel_id}: {e}")
-            return
-        await self._regen(chan, self.out_dir)
+        await self._regen(chans, self.out_dir)
 
     async def on_guild_channel_update(self, before, after):
-        if getattr(after, "id", None) != self.channel_id:
+        if getattr(after, "id", None) not in self.channel_ids:
             return
         await self._try_regen_if_visible()
 
@@ -77,16 +83,16 @@ class MirrorClient(discord.Client):
         await self._try_regen_if_visible()
 
     async def on_message(self, message: discord.Message):
-        if getattr(message.channel, "id", None) != self.channel_id:
+        if getattr(message.channel, "id", None) not in self.channel_ids:
             return
-        await self._regen(message.channel, self.out_dir)
+        await self._try_regen_if_visible()
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        if getattr(after.channel, "id", None) != self.channel_id:
+        if getattr(after.channel, "id", None) not in self.channel_ids:
             return
-        await self._regen(after.channel, self.out_dir)
+        await self._try_regen_if_visible()
 
     async def on_message_delete(self, message: discord.Message):
-        if getattr(message.channel, "id", None) != self.channel_id:
+        if getattr(message.channel, "id", None) not in self.channel_ids:
             return
-        await self._regen(message.channel, self.out_dir)
+        await self._try_regen_if_visible()

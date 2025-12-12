@@ -163,20 +163,53 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
         }
 
     for m in messages:
+        raw_text = m.content or ""
+        t = _filter_shill_words(raw_text).strip() if raw_text else ""
+
+        # Extract command from text first. This prevents a common failure mode where
+        # attachments are processed before the command in the same message, which can
+        # incorrectly push the command onto the next page (staggering).
+        cmd = None
+        if t:
+            for raw_line in t.replace("\r\n", "\n").split("\n"):
+                s = raw_line.strip()
+                if s.startswith(">") and len(s) > 1:
+                    cmd = s[1:].strip()
+                elif s.lower().startswith("==>") and len(s) > 3:
+                    cmd = s[3:].strip()
+
+        current_has_content = bool(
+            current["images"] or current["videos"] or current["paragraphs"]
+        )
+        if cmd is not None:
+            # Treat a command as an end-of-page marker when it appears after content:
+            # attach it to the current page, then start a new page for subsequent content.
+            if current_has_content:
+                current["command_text"] = cmd
+                current["last_ts"] = m.created_at
+                start_new()
+            else:
+                # Command with no content: start a new page only if we already had a
+                # command queued (multiple command-only messages in a row).
+                if current["command_text"] is not None:
+                    start_new()
+                current["command_text"] = cmd
+                current["last_ts"] = m.created_at
+
+        if t:
+            paras = normalize_paragraphs(t)
+            if paras:
+                current["paragraphs"].extend(paras)
+                current["last_ts"] = m.created_at
+
+        # Media belongs to the current page, including when it's in the same message
+        # as the command text.
         if m.attachments:
             for att in m.attachments:
                 if is_image_attachment(att):
-                    if current["command_text"] and (
-                        current["images"] or current["videos"] or current["paragraphs"]
-                    ):
-                        start_new()
                     current["images"].append(att.url)
                     current["last_ts"] = m.created_at
                 elif is_video_attachment(att):
-                    if current["command_text"] and (
-                        current["images"] or current["videos"] or current["paragraphs"]
-                    ):
-                        start_new()
                     current["videos"].append(att.url)
                     current["last_ts"] = m.created_at
 
@@ -187,46 +220,11 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
                 u_vid = getattr(getattr(e, "video", None), "url", None)
                 for u in (u_img, u_th):
                     if u:
-                        if current["command_text"] and (
-                            current["images"]
-                            or current["videos"]
-                            or current["paragraphs"]
-                        ):
-                            start_new()
                         current["images"].append(u)
                         current["last_ts"] = m.created_at
                 if u_vid:
-                    if current["command_text"] and (
-                        current["images"] or current["videos"] or current["paragraphs"]
-                    ):
-                        start_new()
                     current["videos"].append(u_vid)
                     current["last_ts"] = m.created_at
-
-        raw_text = m.content or ""
-        if raw_text:
-            t = _filter_shill_words(raw_text).strip()
-
-            cmd = None
-            for raw_line in t.replace("\r\n", "\n").split("\n"):
-                s = raw_line.strip()
-                if s.startswith(">") and len(s) > 1:
-                    cmd = s[1:].strip()
-            if cmd is not None:
-                if current["command_text"] and (
-                    current["images"] or current["videos"] or current["paragraphs"]
-                ):
-                    start_new()
-                current["command_text"] = cmd
-
-            paras = normalize_paragraphs(t)
-            if paras:
-                if current["command_text"] and (
-                    current["images"] or current["videos"] or current["paragraphs"]
-                ):
-                    start_new()
-                current["paragraphs"].extend(paras)
-                current["last_ts"] = m.created_at
 
     if (
         current["images"]
