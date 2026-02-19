@@ -16,8 +16,8 @@ from parsing import (
 from feeds import render_atom
 
 BOSTON_TZ = ZoneInfo("America/New_York")
-# Manual tuning for known channel quirks
-# If the new channel's commands are shifted by one page, you can compensate here.
+# Manual tuning for known command quirks
+# If commands are shifted by one page, you can compensate here.
 # -1 means "pull command_text from the next page".
 def _env_int(name: str, default: int) -> int:
     raw = os.getenv(name)
@@ -296,7 +296,7 @@ def _load_existing_atom(out_dir: Path) -> tuple[list[str], datetime | None, list
 
 def _linkify_previous_page(out_dir: Path, last_old_page_num: int) -> None:
     """
-    Ensure the last page from the old channel links forward to the first new page.
+    Ensure the given page links forward to the next page.
     """
     if last_old_page_num <= 0:
         return
@@ -373,16 +373,21 @@ def _render_page_html(
     log_items: list[dict],
 ) -> str:
     visible_title = prev_command_text or page.get("command_text") or ""
+    if page_number == 1:
+        visible_title = ""
 
     images = page["images"]
     videos = page.get("videos") or []
     paragraphs = page["paragraphs"]
     command_text = page.get("command_text")
-    if not command_text and page_number > 1:
+    if not command_text and page_number > 1 and page_number < total_pages:
         command_text = "Next."
     command_href = None
     if command_text and page_number < total_pages:
         command_href = f"{page_number + 1}.html"
+    if page_number == 1:
+        command_text = None
+        command_href = None
     start_over_href = "1.html"
     go_back_href = f"{page_number - 1}.html" if page_number > 1 else start_over_href
     doc_title = f"{story_title}: {visible_title}" if visible_title else f"{story_title}"
@@ -429,13 +434,11 @@ async def regenerate_site_from_channel(
     absolute_url: str | None,
     site_name: str,
     page_offset: int = 0,
-    old_channel_id: int,
-    new_channel_id: int,
+    channel_ids: list[int],
 ) -> int:
-    # Separate visible channels
-    chan_old = next((c for c in chans if getattr(c, "id", None) == old_channel_id), None)
-    chan_new = next((c for c in chans if getattr(c, "id", None) == new_channel_id), None)
-    if not chan_old and not chan_new:
+    chan_map = {getattr(c, "id", None): c for c in chans}
+    selected = [chan_map.get(cid) for cid in channel_ids if chan_map.get(cid)]
+    if not selected:
         print("No visible channels; skipping regen")
         return 0
 
@@ -455,44 +458,40 @@ async def regenerate_site_from_channel(
         print(f"{count} messages. ({time.perf_counter() - t_fetch:.2f}s)")
         return msgs
 
-    msgs_old: list[discord.Message] = []
-    msgs_new: list[discord.Message] = []
-    if chan_old:
+    all_msgs: list[discord.Message] = []
+    for idx, chan in enumerate(selected, start=1):
+        label = (
+            str(getattr(chan, "id", None))
+            if len(selected) > 1
+            else "main"
+        )
         try:
-            msgs_old = await _fetch_history(chan_old, "old")
+            msgs = await _fetch_history(chan, label)
+            all_msgs.extend(msgs)
         except Exception as e:
-            print(f"Error fetching old channel: {e}")
-    if chan_new:
-        try:
-            msgs_new = await _fetch_history(chan_new, "new")
-        except Exception as e:
-            print(f"Error fetching new channel: {e}")
+            print(f"Error fetching channel {getattr(chan, 'id', None)}: {e}")
+
+    if not all_msgs:
+        print("No messages found; skipping regen")
+        return 0
+
+    def _msg_key(m: discord.Message):
+        ts = getattr(m, "created_at", None)
+        if ts is None:
+            ts = datetime.min.replace(tzinfo=timezone.utc)
+        return (ts, getattr(m, "id", 0))
+
+    all_msgs.sort(key=_msg_key)
 
     t_parse = time.perf_counter()
-    pages_old = parse_pages_from_messages(msgs_old) if msgs_old else []
-    pages_new = parse_pages_from_messages(msgs_new) if msgs_new else []
-    pages_old = [
+    pages = parse_pages_from_messages(all_msgs)
+    pages = [
         p
-        for p in pages_old
+        for p in pages
         if p.get("images") or p.get("videos") or p.get("paragraphs") or p.get("command_text")
     ]
-    pages_new = [
-        p
-        for p in pages_new
-        if p.get("images") or p.get("videos") or p.get("paragraphs") or p.get("command_text")
-    ]
-    if page_offset > 0 and len(pages_old) > page_offset:
-        print(f"Trimming old pages from {len(pages_old)} to {page_offset} to match PAGE_OFFSET")
-        pages_old = pages_old[:page_offset]
-    print(
-        f"Parsed {len(pages_old)} old page(s) and {len(pages_new)} new page(s). "
-        f"({time.perf_counter() - t_parse:.2f}s)"
-    )
-
-    # Determine numbering
-    base_old_count = page_offset if page_offset > 0 else len(pages_old)
-    new_start = base_old_count + 1
-    overall_total_pages = base_old_count + len(pages_new)
+    total_pages = len(pages)
+    print(f"Parsed {total_pages} page(s). ({time.perf_counter() - t_parse:.2f}s)")
 
     env = _tpl_env()
     css = _load_css()
@@ -509,99 +508,81 @@ async def regenerate_site_from_channel(
     log_items: list[dict] = []
     feed_items: list[tuple] = []
 
-    def _process_block(block_pages: list[dict], start_number: int, page_offset_for_titles: int):
-        nonlocal total_images_downloaded, total_images_reused, total_videos_downloaded, total_videos_reused
-        if not block_pages:
-            return
+    if pages:
         print("Writing pages: ", end="", flush=True)
-        t_write = time.perf_counter()
-        for idx, page in enumerate(block_pages, start=start_number):
-            cmd = page.get("command_text")
-            if not cmd and idx > 1:
-                cmd = "Next."
-            local_imgs, img_reused, img_downloaded = rewrite_images_to_local_cached(
-                out_dir=out_dir,
-                page_number=idx,
-                urls=page["images"],
-                max_image_mb=max_image_mb,
-            )
-            local_vids, vid_reused, vid_downloaded = rewrite_videos_to_local_cached(
-                out_dir=out_dir,
-                page_number=idx,
-                urls=page.get("videos") or [],
-                max_image_mb=max_image_mb,
-            )
-            total_images_downloaded += img_downloaded
-            total_images_reused += img_reused
-            total_videos_downloaded += vid_downloaded
-            total_videos_reused += vid_reused
+    t_write = time.perf_counter()
+    for idx, page in enumerate(pages, start=1):
+        cmd = page.get("command_text")
+        if not cmd and idx > 1 and idx < total_pages:
+            cmd = "Next."
+        local_imgs, img_reused, img_downloaded = rewrite_images_to_local_cached(
+            out_dir=out_dir,
+            page_number=idx,
+            urls=page["images"],
+            max_image_mb=max_image_mb,
+        )
+        local_vids, vid_reused, vid_downloaded = rewrite_videos_to_local_cached(
+            out_dir=out_dir,
+            page_number=idx,
+            urls=page.get("videos") or [],
+            max_image_mb=max_image_mb,
+        )
+        total_images_downloaded += img_downloaded
+        total_images_reused += img_reused
+        total_videos_downloaded += vid_downloaded
+        total_videos_reused += vid_reused
 
-            if idx > start_number:
-                print(" ", end="", flush=True)
-            print(f"{idx}*[{len(local_imgs)}i,{len(local_vids)}v]", end="", flush=True)
+        if idx > 1:
+            print(" ", end="", flush=True)
+        print(f"{idx}*[{len(local_imgs)}i,{len(local_vids)}v]", end="", flush=True)
 
-            page_for_render = {
-                "images": local_imgs,
-                "videos": local_vids,
-                "paragraphs": page["paragraphs"],
-                "command_text": cmd,
+        page_for_render = {
+            "images": local_imgs,
+            "videos": local_vids,
+            "paragraphs": page["paragraphs"],
+            "command_text": cmd,
+        }
+        processed_pages[idx] = page_for_render
+
+        title = title_for_page(idx, pages, page_offset) or cmd or story_title
+        date_str = format_short_date(page.get("last_ts"))
+        log_items.append(
+            {
+                "num": idx,
+                "href": f"{idx}.html",
+                "title": title,
+                "date": date_str,
+                "ts": page.get("last_ts"),
             }
-            processed_pages[idx] = page_for_render
-
-            title = (
-                title_for_page(idx, block_pages, page_offset_for_titles)
-                or cmd
-                or story_title
-            )
-            date_str = format_short_date(page.get("last_ts"))
-            log_items.append(
-                {
-                    "num": idx,
-                    "href": f"{idx}.html",
-                    "title": title,
-                    "date": date_str,
-                    "ts": page.get("last_ts"),
-                }
-            )
-            feed_items.append((page.get("last_ts"), idx, page_for_render, title))
+        )
+        feed_items.append((page.get("last_ts"), idx, page_for_render, title))
+    if pages:
         print(f" ({time.perf_counter() - t_write:.2f}s)")
-
-    _process_block(pages_old, 1, 0)
-    _process_block(pages_new, new_start, page_offset or (new_start - 1))
 
     # Optional manual correction: shift commands on/after a page number.
     if MANUAL_COMMAND_SHIFT == -1 and processed_pages:
-        start = max(MANUAL_COMMAND_SHIFT_START_PAGE, new_start)
-        for n in range(start, overall_total_pages):
+        start = max(MANUAL_COMMAND_SHIFT_START_PAGE, 1)
+        for n in range(start, total_pages):
             nxt = processed_pages.get(n + 1, {}).get("command_text")
             if nxt:
                 processed_pages[n]["command_text"] = nxt
 
-        # Boundary: set the last old page's command to the first "real" new-section title,
-        # so page `new_start` shows that as its top title (MSPA style).
-        if pages_new:
-            boundary_cmd = processed_pages.get(new_start, {}).get("command_text") or ""
-            if not boundary_cmd or boundary_cmd.strip().lower() == "next.":
-                for look in range(new_start + 1, min(new_start + 10, overall_total_pages + 1)):
-                    c = (processed_pages.get(look, {}).get("command_text") or "").strip()
-                    if c and c.lower() != "next.":
-                        boundary_cmd = c
-                        break
-            if boundary_cmd:
-                if (new_start - 1) in processed_pages:
-                    processed_pages[new_start - 1]["command_text"] = boundary_cmd
-                # Don't leave the first new page with the same command as its title.
-                if (processed_pages.get(new_start, {}).get("command_text") or "").strip() == boundary_cmd:
-                    processed_pages[new_start]["command_text"] = "Next."
+    original_commands = {num: processed_pages[num].get("command_text") for num in processed_pages}
+    first_page_title = story_title
+    if 1 in processed_pages:
+        processed_pages[1]["command_text"] = first_page_title
 
     # Rebuild log/feed titles based on previous page command
     ts_by_num: dict[int, datetime | None] = {num: ts for (ts, num, _p, _t) in feed_items}
     rebuilt_log: list[dict] = []
     rebuilt_feed: list[tuple] = []
     for num in sorted(processed_pages.keys()):
-        prev_cmd = processed_pages.get(num - 1, {}).get("command_text") if num > 1 else ""
-        cur_cmd = processed_pages[num].get("command_text") or ""
-        title = prev_cmd or cur_cmd or story_title
+        if num == 1:
+            title = first_page_title
+        else:
+            prev_cmd = original_commands.get(num - 1) or ""
+            cur_cmd = processed_pages[num].get("command_text") or ""
+            title = prev_cmd or cur_cmd or story_title
         ts = ts_by_num.get(num)
         rebuilt_log.append(
             {
@@ -630,13 +611,13 @@ async def regenerate_site_from_channel(
     if processed_pages:
         all_numbers = sorted(processed_pages.keys())
         for num in all_numbers:
-            prev_cmd = processed_pages.get(num - 1, {}).get("command_text") if num > 1 else None
+            prev_cmd = original_commands.get(num - 1) if num > 1 else None
             html_str = _render_page_html(
                 env=env,
                 css=css,
                 story_title=story_title,
                 page_number=num,
-                total_pages=overall_total_pages,
+                total_pages=total_pages,
                 page=processed_pages[num],
                 prev_command_text=prev_cmd,
                 absolute_url=absolute_url,
@@ -648,11 +629,6 @@ async def regenerate_site_from_channel(
                 pages_written += 1
             else:
                 pages_unchanged += 1
-
-        # ensure the boundary page links forward into the new section
-        if pages_new:
-            _linkify_previous_page(out_dir, new_start - 1)
-            _ensure_next_link(out_dir, new_start, new_start + 1 if overall_total_pages >= new_start + 1 else new_start)
 
         first = (out_dir / "1.html").read_text(encoding="utf-8")
         write_if_changed(out_dir / "index.html", first)
@@ -670,8 +646,8 @@ async def regenerate_site_from_channel(
         site_name=site_name,
         absolute_url=absolute_url,
         sorted_items=feed_items,
-        pages=pages_new if pages_new else pages_old,
-        page_offset=page_offset or (new_start - 1),
+        pages=pages,
+        page_offset=page_offset,
         existing_entries=[],
         existing_updated=None,
         limit=None,

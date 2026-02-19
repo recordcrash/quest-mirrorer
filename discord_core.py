@@ -35,11 +35,19 @@ def install_safety_guards():
 
 
 class MirrorClient(discord.Client):
-    def __init__(self, *, channel_ids: list[int], out_dir: Path, regen_callable):
+    def __init__(
+        self,
+        *,
+        channel_ids: list[int],
+        out_dir: Path,
+        regen_callable,
+        exit_after_regen: bool = False,
+    ):
         super().__init__()
         self.channel_ids = set(channel_ids)
         self.out_dir = out_dir
         self._regen = regen_callable
+        self.exit_after_regen = exit_after_regen
 
     async def _fetch_visible_channels(self) -> list:
         chans = []
@@ -71,8 +79,12 @@ class MirrorClient(discord.Client):
         chans = await self._fetch_visible_channels()
         if not chans:
             print(f"Channels {sorted(self.channel_ids)} not visible right now")
+            if self.exit_after_regen:
+                await self.close()
             return
         await self._regen(chans, self.out_dir)
+        if self.exit_after_regen:
+            await self.close()
 
     async def on_guild_channel_update(self, before, after):
         if getattr(after, "id", None) not in self.channel_ids:

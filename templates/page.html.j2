@@ -51,8 +51,10 @@
         <p class="comic-text">{{ p }}</p>
         {% endfor %}
         <div class="commands">
-        {% if command_text %}
+        {% if command_text and command_href %}
           &gt; <a href="{{ command_href }}">{{ command_text }}</a>
+        {% elif command_text %}
+          &gt; <span class="command-text">{{ command_text }}</span>
         {% else %}
           <span class="placeholder" aria-hidden="true">&gt;</span>
         {% endif %}

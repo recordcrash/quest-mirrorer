@@ -1,5 +1,6 @@
 from pathlib import Path
 from urllib.parse import urlparse
+import ast
 import mimetypes
 import os
 import re
@@ -10,22 +11,58 @@ image_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff"}
 video_exts = {".mp4", ".webm", ".mov", ".m4v", ".ogv", ".ogg", ".avi", ".mkv"}
 
 
-def _load_shill_words() -> list[str]:
-    raw = os.getenv("SHILLWORDS", "")
+def _load_env_list(name: str) -> list[object]:
+    raw = os.getenv(name, "").strip()
     if not raw:
         return []
-    return [w.strip() for w in raw.split(",") if w.strip()]
+    try:
+        value = ast.literal_eval(raw)
+    except Exception:
+        return [v.strip() for v in raw.split(",") if v.strip()]
+    if isinstance(value, dict):
+        return list(value.items())
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    if isinstance(value, (str, int, float)):
+        return [value]
+    return []
 
 
-_SHILL_WORDS = _load_shill_words()
+def _load_shill_replacements() -> list[tuple[str, str]]:
+    items = _load_env_list("SHILLWORDS")
+    replacements: list[tuple[str, str]] = []
+    for item in items:
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            src, dst = item
+            if isinstance(src, str) and isinstance(dst, str) and src:
+                replacements.append((src, dst))
+        elif isinstance(item, str) and item:
+            replacements.append((item, ""))
+    return replacements
 
 
-def _filter_shill_words(text: str) -> str:
-    if not text or not _SHILL_WORDS:
+def _load_user_ids() -> set[int]:
+    raw = os.getenv("USER_IDS", "").strip()
+    if not raw:
+        return set()
+    parts = [p for p in re.split(r"[,\s]+", raw) if p]
+    allowed: set[int] = set()
+    for part in parts:
+        try:
+            allowed.add(int(part))
+        except (TypeError, ValueError):
+            continue
+    return allowed
+
+
+def _filter_shill_words(text: str, replacements: list[tuple[str, str]]) -> str:
+    if not text or not replacements:
         return text
     t = text
-    for w in _SHILL_WORDS:
-        t = re.sub(re.escape(w), "", t, flags=re.IGNORECASE)
+    for src, dst in replacements:
+        if not src:
+            continue
+        t = re.sub(re.escape(src), dst, t, flags=re.IGNORECASE)
     return t
 
 
@@ -142,6 +179,8 @@ def normalize_paragraphs(text: str) -> list[str]:
 
 
 def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
+    shill_replacements = _load_shill_replacements()
+    allowed_user_ids = _load_user_ids()
     pages: list[dict] = []
     current = {
         "images": [],
@@ -163,8 +202,12 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
         }
 
     for m in messages:
+        if allowed_user_ids:
+            author_id = getattr(getattr(m, "author", None), "id", None)
+            if author_id not in allowed_user_ids:
+                continue
         raw_text = m.content or ""
-        t = _filter_shill_words(raw_text).strip() if raw_text else ""
+        t = _filter_shill_words(raw_text, shill_replacements).strip() if raw_text else ""
 
         # Extract command from text first. This prevents a common failure mode where
         # attachments are processed before the command in the same message, which can
