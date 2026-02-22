@@ -385,9 +385,6 @@ def _render_page_html(
     command_href = None
     if command_text and page_number < total_pages:
         command_href = f"{page_number + 1}.html"
-    if page_number == 1:
-        command_text = None
-        command_href = None
     start_over_href = "1.html"
     go_back_href = f"{page_number - 1}.html" if page_number > 1 else start_over_href
     doc_title = f"{story_title}: {visible_title}" if visible_title else f"{story_title}"
@@ -569,9 +566,6 @@ async def regenerate_site_from_channel(
 
     original_commands = {num: processed_pages[num].get("command_text") for num in processed_pages}
     first_page_title = story_title
-    if 1 in processed_pages:
-        processed_pages[1]["command_text"] = first_page_title
-
     # Rebuild log/feed titles based on previous page command
     ts_by_num: dict[int, datetime | None] = {num: ts for (ts, num, _p, _t) in feed_items}
     rebuilt_log: list[dict] = []
