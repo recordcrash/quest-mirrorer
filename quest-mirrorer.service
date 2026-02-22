@@ -1,0 +1,29 @@
+[Unit]
+Description=Quest Mirrorer Discord watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Set these for your server.
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/quest-mirrorer
+
+# If uv is installed in ~/.local/bin, include it in PATH for systemd.
+Environment=PATH=/home/YOUR_USER/.local/bin:/usr/local/bin:/usr/bin
+
+# Optional if you want a non-default env file:
+# Environment=ENV_FILE=.env
+
+ExecStart=/usr/bin/env uv run main.py
+Restart=always
+RestartSec=5
+
+# Useful defaults for long-running logs.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
