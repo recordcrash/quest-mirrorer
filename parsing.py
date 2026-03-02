@@ -70,6 +70,7 @@ _END_UPDATE_BRACKET_RE = re.compile(
     r"^\[\s*(?=[^\]]*\bend\b)(?=[^\]]*\bupdate(?:s)?\b)[^\]]*\]\s*$",
     re.IGNORECASE,
 )
+_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 
 
 def is_image_attachment(att: discord.Attachment) -> bool:
@@ -178,6 +179,12 @@ def normalize_paragraphs(text: str) -> list[str]:
     return [b for b in blocks if b and not _END_UPDATE_BRACKET_RE.match(b)]
 
 
+def _strip_urls(text: str) -> str:
+    if not text:
+        return text
+    return _URL_RE.sub("", text)
+
+
 def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
     shill_replacements = _load_shill_replacements()
     allowed_user_ids = _load_user_ids()
@@ -207,7 +214,11 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
             if author_id not in allowed_user_ids:
                 continue
         raw_text = m.content or ""
-        t = _filter_shill_words(raw_text, shill_replacements).strip() if raw_text else ""
+        t = raw_text or ""
+        if t:
+            t = _filter_shill_words(t, shill_replacements)
+            t = _strip_urls(t)
+            t = t.strip()
 
         # Extract command from text first. This prevents a common failure mode where
         # attachments are processed before the command in the same message, which can
@@ -258,13 +269,7 @@ def parse_pages_from_messages(messages: list[discord.Message]) -> list[dict]:
 
         if m.embeds:
             for e in m.embeds:
-                u_img = getattr(getattr(e, "image", None), "url", None)
-                u_th = getattr(getattr(e, "thumbnail", None), "url", None)
                 u_vid = getattr(getattr(e, "video", None), "url", None)
-                for u in (u_img, u_th):
-                    if u:
-                        current["images"].append(u)
-                        current["last_ts"] = m.created_at
                 if u_vid:
                     current["videos"].append(u_vid)
                     current["last_ts"] = m.created_at
